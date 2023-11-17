@@ -1,12 +1,12 @@
 Global:
   use_gpu: True
-  epoch_num: 20
+  epoch_num: 50
   log_smooth_window: 20
-  print_batch_step: 10
-  save_model_dir: ./output/rec/svtr_cppd_base/
-  save_epoch_step: 1
+  print_batch_step: 100
+  save_model_dir: ./models/techainer_svtr_cppd_base_fulltext/
+  save_epoch_step: 2
   # evaluation is run every 2000 iterations after the 0th iteration
-  eval_batch_step: [0, 2000]
+  eval_batch_step: [0, 60000]
   cal_metric_during_train: True
   pretrained_model:
   checkpoints:
@@ -14,11 +14,10 @@ Global:
   use_visualdl: False
   infer_img: doc/imgs_words_en/word_10.png
   # for data or label process
-  character_dict_path:
-  character_type: en
-  max_text_length: 25
+  character_dict_path: /mnt/ssd/martin/project/ocr/data/data_ocr_2/vocab.txt
+  max_text_length: &max_text_length 150
   infer_mode: False
-  use_space_char: False
+  use_space_char: True
   save_res_path: ./output/rec/predicts_svtr_cppd_base.txt
 
 
@@ -41,7 +40,7 @@ Architecture:
   Transform:
   Backbone:
     name: SVTRNet
-    img_size: [32, 100]
+    img_size: [32, 512]
     patch_merging: 'Conv'
     embed_dim: [128, 256, 384]
     depth: [6, 6, 4]
@@ -53,15 +52,17 @@ Architecture:
   Head:
     name: CPPDHead
     dim: 384
-    vis_seq: 50
+    vis_seq: 256
     num_layer: 3
+    max_len: *max_text_length 
 
 Loss:
   name: CPPDLoss
-  ignore_index: &ignore_index 100 # must be greater than the number of character classes
+  ignore_index: &ignore_index 1000 # must be greater than the number of character classes
   smoothing: True
   sideloss_weight: 1.0
-
+  max_text_length: *max_text_length
+  
 PostProcess:
   name: CPPDLabelDecode
 
@@ -71,29 +72,40 @@ Metric:
 
 Train:
   dataset:
-    name: LMDBDataSet
-    data_dir: ./train_data/data_lmdb_release/training/
+    name: SimpleDataSet
+    data_dir: /mnt/ssd/martin/project/ocr/data/data_ocr_2
+    label_file_list:
+      - /mnt/ssd/martin/project/ocr/data/data_ocr_2/out_label_train.txt
     transforms:
-      - DecodeImage: # load image
-          img_mode: BGR
+      - CustomDecodeImage: # load image
           channel_first: False
+          pil_prob: 0.5 # load by PIL prob
+          bgr_prob: 0.5 # prob for bgr color
       - CPPDLabelEncode: # Class handling label
           ignore_index: *ignore_index
-      - SVTRRecResizeImg:
-          image_shape: [3, 32, 100]
-          padding: False
+      - CustomRecResizeImg:
+          image_shape: [32, 512, 3]
+          skew_ratio: 0.15
+          padding: True
+      - CustomRecAug:
+          tia_prob: 0.15
+          debug: True
+          save_img_path: "/mnt/ssd/martin/project/ocr/PaddleOCR/output/aug"
+          n_save_imgs: 2000
       - KeepKeys:
           keep_keys: ['image', 'label', 'label_node', 'length'] # dataloader will return list in this order
   loader:
     shuffle: True
-    batch_size_per_card: 256
+    batch_size_per_card: 8
     drop_last: True
-    num_workers: 8
+    num_workers: 1
 
 Eval:
   dataset:
-    name: LMDBDataSet
-    data_dir: ./train_data/data_lmdb_release/evaluation/
+    name: SimpleDataSet
+    data_dir: /mnt/ssd/martin/project/ocr/data/data_ocr_2
+    label_file_list:
+      - /mnt/ssd/martin/project/ocr/data/data_ocr_2/out_label_val.txt
     transforms:
       - DecodeImage: # load image
           img_mode: BGR
@@ -101,12 +113,12 @@ Eval:
       - CPPDLabelEncode: # Class handling label
           ignore_index: *ignore_index
       - SVTRRecResizeImg:
-          image_shape: [3, 32, 100]
-          padding: False
+          image_shape: [3, 32, 512]
+          padding: True
       - KeepKeys:
           keep_keys: ['image', 'label', 'label_node','length'] # dataloader will return list in this order
   loader:
     shuffle: False
     drop_last: False
-    batch_size_per_card: 256
+    batch_size_per_card: 8
     num_workers: 2

@@ -25,7 +25,9 @@ import cv2
 import numpy as np
 import math
 from PIL import Image
-
+import io
+import random
+random.seed(0)
 
 class DecodeImage(object):
     """ decode image """
@@ -67,6 +69,48 @@ class DecodeImage(object):
         data['image'] = img
         return data
 
+class CustomDecodeImage(object):
+    """ techainer decode image """
+
+    def __init__(self,
+                 channel_first=False,
+                 pil_prob=0.5,
+                 bgr_prob=0.5,
+                 **kwargs):
+        self.channel_first = channel_first
+        self.pil_prob = pil_prob
+        self.bgr_prob = bgr_prob
+
+    def __call__(self, data):
+        img = data['image']
+        if six.PY2:
+            assert type(img) is str and len(
+                img) > 0, "invalid input 'img' in DecodeImage"
+        else:
+            assert type(img) is bytes and len(
+                img) > 0, "invalid input 'img' in DecodeImage"
+        
+        bgr_mode = random.random() <= self.bgr_prob
+
+        if random.random() <= self.pil_prob: # load by PIL if true
+            img = Image.open(io.BytesIO(img)).convert('RGB')
+            img = np.asarray(img)
+            if bgr_mode:
+                img = img[:, :, ::-1]
+        else: # load by cv2
+            img = np.frombuffer(img, dtype='uint8')
+            img = cv2.imdecode(img, 1)
+            if not bgr_mode:
+                img = img[:, :, ::-1]
+
+        if img is None:
+            return None
+
+        if self.channel_first:
+            img = img.transpose((2, 0, 1))
+
+        data['image'] = img
+        return data
 
 class NormalizeImage(object):
     """ normalize image such as substract mean, divide std

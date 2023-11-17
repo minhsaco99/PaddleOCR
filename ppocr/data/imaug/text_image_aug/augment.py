@@ -99,7 +99,7 @@ def tia_stretch(src, segment=4):
 def tia_perspective(src):
     img_h, img_w = src.shape[:2]
 
-    thresh = img_h // 2
+    thresh = img_h // 4
 
     src_pts = list()
     dst_pts = list()

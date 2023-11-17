@@ -16,14 +16,24 @@ import math
 import cv2
 import numpy as np
 import random
+random.seed(0)
 import copy
 from PIL import Image
 import PIL
 from .text_image_aug import tia_perspective, tia_stretch, tia_distort
 from .abinet_aug import CVGeometry, CVDeterioration, CVColorJitter, SVTRGeometry, SVTRDeterioration, ParseQDeterioration
 from paddle.vision.transforms import Compose
+from imgaug import augmenters as iaa
+from imgaug import parameters as iap
+import imgaug as ia
+import os
 
 
+def skew_image_horizontally(image, interpolation=cv2.INTER_CUBIC):
+    height, width = image.shape[:2]
+    f = random.uniform(0.8, 1.2)
+    return cv2.resize(image, (int(width*f), int(height)), interpolation=cv2.INTER_CUBIC)
+    
 class RecAug(object):
     def __init__(self,
                  tia_prob=0.4,
@@ -54,7 +64,114 @@ class RecAug(object):
         data = self.bda(data)
         return data
 
+class CustomRecAug(object):
+    def __init__(self, tia_prob=0.3, debug=False, save_img_path=None, n_save_imgs=2000, **kwargs) -> None:
+        self.augmentation_pipeline = iaa.Sequential([
+                    # # Augment color and brightness
+                    iaa.Sometimes(0.7,
+                        iaa.OneOf([
+                            iaa.Add((-30, 50)),
+                            iaa.AddToHue((-100, 100)),
+                            iaa.AddToBrightness((-30, 30)),
+                            iaa.AddToSaturation((-50,50)),
+                            iaa.AddToHueAndSaturation((-40, 40)),
+                            iaa.ChangeColorTemperature((4000, 11000)),
+                            iaa.Grayscale(alpha=(0.0, 1.0)),
+                            iaa.ChannelShuffle(1),
+                            iaa.Invert(0.1, per_channel=True),
+                            iaa.BlendAlphaHorizontalLinearGradient(iaa.Add(iap.Normal(iap.Choice([-30, 30]), 20)), start_at=(0, 0.25), end_at=(0.75, 1)),
+                            iaa.BlendAlphaHorizontalLinearGradient(iaa.Add(iap.Normal(iap.Choice([-30, 30]), 20)), start_at=(0.75, 1), end_at=(0, 0.25)),
+                            iaa.MultiplyBrightness((0.75, 1.25)),
+                            iaa.MultiplyAndAddToBrightness(mul=(0.75, 1.25), add=(-20, 20)),
+                            iaa.Multiply((0.85, 1.10)),
+                            # Change contrast
+                            iaa.SigmoidContrast(gain= (3, 7), cutoff=(0.3, 0.6)),
+                            iaa.LinearContrast((0.7, 1.3)),
+                            iaa.GammaContrast((0.7, 1.5)),
+                            iaa.LogContrast(gain=(0.7, 1.3)),
+                            iaa.pillike.Autocontrast((2, 5)),
+                            iaa.Emboss(alpha=(0.1, 0.5), strength=(0.8, 1.2)),
+                            ]),
+                        ), 
+                    # # # Noise and change background
+                    iaa.Sometimes(0.12,
+                        iaa.OneOf([
+                            iaa.pillike.FilterSmoothMore(),
+                            iaa.imgcorruptlike.Spatter(severity=(1,3)),
+                            iaa.pillike.EnhanceSharpness(),
+                            iaa.AdditiveGaussianNoise(scale=(0.02 * 255, 0.05 * 255)),
+                            iaa.AdditiveGaussianNoise(scale=(0.02 * 255, 0.05 * 255), per_channel=True),
+                            iaa.SaltAndPepper(p=(0.001, 0.01)),
+                            iaa.Sharpen(alpha=(0.1, 0.5)),
+                            iaa.MultiplyElementwise((0.9, 1.1), per_channel=0.5),
+                            iaa.GaussianBlur(sigma=(0.5, 1.5)),
+                            iaa.AverageBlur(k=(1, 2)),
+                            iaa.MotionBlur(k=(3, 5), angle=(-90, 90)),
+                            iaa.Dropout((0.001, 0.01), per_channel=True),
+                            iaa.ElasticTransformation(alpha=(1, 2), sigma=(0.5, 1.5)),
+                            iaa.CoarseDropout(0.02, size_percent=(0.01, 0.3), per_channel=True),
+                            ])
+                        ),
+                    # # # Transform
+                    iaa.Sometimes(0.25,
+                        iaa.OneOf([
+                            iaa.PiecewiseAffine(scale=(0.01, 0.05)),
+                            iaa.Rotate((-2, 2)),
+                            iaa.Rotate((-3, 3), fit_output=True, cval=(0,255), mode=ia.ALL),
+                            iaa.Crop((1,3)),
+                            iaa.ShearX((-5, 5), mode=ia.ALL),
+                            iaa.ShearX((-9, 9), mode=ia.ALL, fit_output=True),
+                            iaa.ShearY((-2, 2), mode=ia.ALL, cval=(0, 255)),
+                            iaa.ShearY((-4, 4), mode=ia.ALL, cval=(0, 255), fit_output=True),
+                            iaa.Affine(translate_px=(-2,4), mode=ia.ALL),
+                            iaa.Affine(translate_px=(-4,4), mode=ia.ALL, fit_output=True),
+                        ])
+                    ),
+                    
+                    # # compress image
+                    iaa.Sometimes(0.05,
+                        iaa.OneOf([
+                            iaa.JpegCompression(compression=(50, 80)),
+                            iaa.imgcorruptlike.Pixelate(severity=(1)),
+                            iaa.UniformColorQuantization((10, 120)),
+                        ])
+                    )
+                ])
+        self.tia_prob = tia_prob
+        self.debug = debug
+        self.save_img_path = save_img_path
+        self.n_save_imgs = n_save_imgs
+        self.save_img_count = 0
+        if self.debug:
+            if not os.path.exists(save_img_path):
+                os.makedirs(save_img_path)
+            assert save_img_path != None, "Use debug must pass the save_img_path parameter"
 
+    def __call__(self, data):
+        img = data['image']
+        h, w, _ = img.shape
+        if h >= 20 and w >= 20:
+            if random.random() <= self.tia_prob:
+                img = tia_stretch(img, random.randint(5, 7))
+            if random.random() <= self.tia_prob:
+                img = tia_distort(img, random.randint(10, 13))
+            if random.random() <= self.tia_prob:
+                img = tia_perspective(img)
+
+        if random.random() <= 0.9:
+            img = self.augmentation_pipeline.augment(image=img.astype(np.uint8))
+        if img.shape != data['resize_shape']:
+            img = cv2.resize(img, [data['resize_shape'][1], data['resize_shape'][0]], data['interpolation'])
+        if self.debug and self.save_img_count < self.n_save_imgs:
+            cv2.imwrite(os.path.join(self.save_img_path, data['img_path'].split('/')[-1]), img.astype(np.uint8))
+            self.save_img_count += 1
+        img = img.astype(np.float32)
+        img = img.transpose((2, 0, 1)) / 255
+        img -= 0.5
+        img /= 0.5
+        data['image'] = img
+        return data
+    
 class BaseDataAugmentation(object):
     def __init__(self,
                  crop_prob=0.4,
@@ -495,7 +612,48 @@ class ABINetRecResizeImg(object):
         data['valid_ratio'] = valid_ratio
         return data
 
+class CustomRecResizeImg(object):
+    def __init__(self, image_shape, padding=True, skew_ratio=0.1, **kwargs):
+        self.image_shape = image_shape
+        self.padding = padding
+        self.skew_ratio = skew_ratio
 
+    def __call__(self, data):
+        img = data['image']
+        interpolation = random.choice([cv2.INTER_AREA, cv2.INTER_CUBIC, 
+                                   cv2.INTER_LINEAR, cv2.INTER_NEAREST,
+                                   cv2.INTER_LANCZOS4, cv2.INTER_LINEAR_EXACT,
+                                   cv2.INTER_NEAREST_EXACT
+                                   ])
+        imgH, imgW, imgC = self.image_shape
+        h = img.shape[0]
+        w = img.shape[1]
+
+        if random.random() <= self.skew_ratio:
+            img = skew_image_horizontally(img, interpolation=interpolation)
+
+        if not self.padding:
+            resized_image = cv2.resize(
+                img, (imgW, imgH), interpolation=interpolation)
+            resized_w = imgW
+        else:
+            ratio = w / float(h)
+            if math.ceil(imgH * ratio) > imgW:
+                resized_w = imgW
+            else:
+                resized_w = int(math.ceil(imgH * ratio))
+            resized_image = cv2.resize(img, (resized_w, imgH))
+
+        padding_im = np.zeros((imgH, imgW, imgC), dtype=np.float32)
+        padding_im[:, 0:resized_w, :] = resized_image
+        valid_ratio = min(1.0, float(resized_w / imgW))
+        
+        data['resize_shape'] = self.image_shape
+        data['interpolation'] = interpolation
+        data['image'] = padding_im
+        data['valid_ratio'] = valid_ratio
+        return data
+    
 class SVTRRecResizeImg(object):
     def __init__(self, image_shape, padding=True, **kwargs):
         self.image_shape = image_shape
