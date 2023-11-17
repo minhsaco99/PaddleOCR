@@ -27,7 +27,7 @@ from imgaug import augmenters as iaa
 from imgaug import parameters as iap
 import imgaug as ia
 import os
-
+import gc
 
 def skew_image_horizontally(image, interpolation=cv2.INTER_CUBIC):
     height, width = image.shape[:2]
@@ -170,6 +170,7 @@ class CustomRecAug(object):
         img -= 0.5
         img /= 0.5
         data['image'] = img
+        gc.collect()
         return data
     
 class BaseDataAugmentation(object):
@@ -652,6 +653,7 @@ class CustomRecResizeImg(object):
         data['interpolation'] = interpolation
         data['image'] = padding_im
         data['valid_ratio'] = valid_ratio
+        gc.collect()
         return data
     
 class SVTRRecResizeImg(object):
