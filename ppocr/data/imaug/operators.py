@@ -110,7 +110,6 @@ class CustomDecodeImage(object):
             img = img.transpose((2, 0, 1))
 
         data['image'] = img
-        gc.collect()
         return data
 
 class NormalizeImage(object):

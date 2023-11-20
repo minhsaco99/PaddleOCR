@@ -142,6 +142,8 @@ class CustomRecAug(object):
         self.save_img_path = save_img_path
         self.n_save_imgs = n_save_imgs
         self.save_img_count = 0
+        self.gc_count = 0
+
         if self.debug:
             if not os.path.exists(save_img_path):
                 os.makedirs(save_img_path)
@@ -170,7 +172,10 @@ class CustomRecAug(object):
         img -= 0.5
         img /= 0.5
         data['image'] = img
-        gc.collect()
+        self.gc_count += 1
+        if self.gc_count % 10000 == 0:
+            gc.collect()
+            self.gc_count = 0
         return data
     
 class BaseDataAugmentation(object):
@@ -634,7 +639,7 @@ class CustomRecResizeImg(object):
             img = skew_image_horizontally(img, interpolation=interpolation)
 
         if not self.padding:
-            resized_image = cv2.resize(
+            img = cv2.resize(
                 img, (imgW, imgH), interpolation=interpolation)
             resized_w = imgW
         else:
@@ -643,17 +648,16 @@ class CustomRecResizeImg(object):
                 resized_w = imgW
             else:
                 resized_w = int(math.ceil(imgH * ratio))
-            resized_image = cv2.resize(img, (resized_w, imgH))
+            img = cv2.resize(img, (resized_w, imgH))
 
         padding_im = np.zeros((imgH, imgW, imgC), dtype=np.float32)
-        padding_im[:, 0:resized_w, :] = resized_image
+        padding_im[:, 0:resized_w, :] = img
         valid_ratio = min(1.0, float(resized_w / imgW))
         
         data['resize_shape'] = self.image_shape
         data['interpolation'] = interpolation
         data['image'] = padding_im
         data['valid_ratio'] = valid_ratio
-        gc.collect()
         return data
     
 class SVTRRecResizeImg(object):
