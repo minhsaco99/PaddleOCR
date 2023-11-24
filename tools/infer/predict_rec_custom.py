@@ -1,4 +1,3 @@
-import argparse
 import numpy as np
 import sys
 import time
@@ -8,7 +7,7 @@ import math
 
 import tritonclient.grpc as grpcclient
 from typing import Dict, List, Any, Union
-
+from abc import ABC, abstractmethod
 class BaseTriton(object):
 
     def __init__(self, input_name=[], input_type=[], input_dim=[], output_name=[], \
@@ -263,7 +262,7 @@ class CPPDLabelDecode(BaseRecLabelDecode):
         dict_character = ['</s>'] + dict_character
         return dict_character
 
-class CPPDModelBase(object):
+class CPPDModelBase(ABC):
     def __init__(self,  
                     ocr_vocab_path: str, 
                     input_shape=[3, 32, 768],
@@ -276,8 +275,9 @@ class CPPDModelBase(object):
         self.padding = padding
         self.batch_size = batch_size
 
+    @abstractmethod
     def forward(self, img_list: List[np.ndarray]) -> Any:
-        raise NotImplementedError
+        pass
 
     @staticmethod
     def preprocess(img,
@@ -398,7 +398,7 @@ if __name__ == '__main__':
     for img in test_folder.iterdir():
         im = cv2.imread(str(img))
         img_list.append(im)
-    for i in range(10):
+    for i in range(1):
         start = time.time()
         results = model.predict_batch(img_list)
         total_time += time.time() - start
