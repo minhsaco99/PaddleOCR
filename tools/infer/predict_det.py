@@ -249,7 +249,7 @@ class TextDetector(object):
                 outputs.append(output)
             if self.args.benchmark:
                 self.autolog.times.stamp()
-
+        print(outputs[0].shape)
         preds = {}
         if self.det_algorithm == "EAST":
             preds['f_geo'] = outputs[0]

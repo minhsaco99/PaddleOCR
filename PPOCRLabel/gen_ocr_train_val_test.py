@@ -34,7 +34,7 @@ def splitTrainVal(root, absTrainRootPath, absValRootPath, absTestRootPath, train
     for index, labelRecordInfo in enumerate(labelFileContent):
         imageRelativePath = labelRecordInfo.split('\t')[0]
         imageLabel = labelRecordInfo.split('\t')[1]
-        imageName = os.path.basename(imageRelativePath)
+        imageName = imageRelativePath
 
         if flag == "det":
             imagePath = os.path.join(dataAbsPath, imageName)
@@ -46,17 +46,19 @@ def splitTrainVal(root, absTrainRootPath, absValRootPath, absTestRootPath, train
         trainRatio = eval(trainValTestRatio[0]) / 10
         valRatio = trainRatio + eval(trainValTestRatio[1]) / 10
         curRatio = index / labelRecordLen
-
         if curRatio < trainRatio:
             imageCopyPath = os.path.join(absTrainRootPath, imageName)
+            os.makedirs(os.path.dirname(imageCopyPath), exist_ok=True)
             shutil.copy(imagePath, imageCopyPath)
             trainTxt.write("{}\t{}".format(imageCopyPath, imageLabel))
         elif curRatio >= trainRatio and curRatio < valRatio:
             imageCopyPath = os.path.join(absValRootPath, imageName)
+            os.makedirs(os.path.dirname(imageCopyPath), exist_ok=True)
             shutil.copy(imagePath, imageCopyPath)
             valTxt.write("{}\t{}".format(imageCopyPath, imageLabel))
         else:
             imageCopyPath = os.path.join(absTestRootPath, imageName)
+            os.makedirs(os.path.dirname(imageCopyPath), exist_ok=True)
             shutil.copy(imagePath, imageCopyPath)
             testTxt.write("{}\t{}".format(imageCopyPath, imageLabel))
 

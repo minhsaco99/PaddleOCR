@@ -1,18 +1,19 @@
 Global:
   debug: false
   use_gpu: true
-  epoch_num: &epoch_num 500
+  epoch_num: &epoch_num 200
   log_smooth_window: 20
   print_batch_step: 100
-  save_model_dir: ./output/ch_PP-OCRv4
+  save_model_dir: ./output/ocr_game/v10_add_new_game
   save_epoch_step: 10
   eval_batch_step:
   - 0
-  - 1500
+  - 600
   cal_metric_during_train: false
-  checkpoints:
-  pretrained_model: https://paddleocr.bj.bcebos.com/pretrained/PPLCNetV3_x0_75_ocr_det.pdparams
-  save_inference_dir: null
+  # checkpoints: ./output/ocr_game/v10_add_new_game/best_accuracy
+  # pretrained_model: pretrained_models/ch_PP-OCRv4_det_train/best_accuracy.pdparams
+  pretrained_model: ./output/ocr_game/v10_add_new_game/best_accuracy
+  save_inference_dir: output/ocr_game/v10_add_new_game/inference
   use_visualdl: false
   infer_img: doc/imgs_en/img_10.jpg
   save_res_path: ./checkpoints/det_db/predicts_db.txt
@@ -48,7 +49,7 @@ Optimizer:
   beta2: 0.999
   lr:
     name: Cosine
-    learning_rate: 0.001 #(8*8c)
+    learning_rate: 0.0003 #(8*8c)
     warmup_epoch: 2
   regularizer:
     name: L2
@@ -68,21 +69,21 @@ Metric:
 Train:
   dataset:
     name: SimpleDataSet
-    data_dir: ./train_data/icdar2015/text_localization/
+    data_dir: /mnt/ssd/martin/project/ocr_game/data/det/v4_add_claim_data/
     label_file_list:
-      - ./train_data/icdar2015/text_localization/train_icdar2015_label.txt
+      - /mnt/ssd/martin/project/ocr_game/data/det/v4_add_claim_data/train_aug.txt
     ratio_list: [1.0]
     transforms:
     - DecodeImage:
         img_mode: BGR
         channel_first: false
     - DetLabelEncode: null
-    - CopyPaste: null
+    # - CopyPaste: null
     - IaaAugment:
         augmenter_args:
-        - type: Fliplr
-          args:
-            p: 0.5
+        # - type: Fliplr
+        #   args:
+        #     p: 0.5
         - type: Affine
           args:
             rotate:
@@ -92,11 +93,15 @@ Train:
           args:
             size:
             - 0.5
-            - 3
+            - 2.5
+    - CustomDetAug:
+        debug: true
+        save_img_path: "/mnt/ssd/martin/project/ocr_game/PaddleOCR/output/aug"
+        n_save_imgs: 2000
     - EastRandomCropData:
         size:
-        - 640
-        - 640
+        - 576
+        - 576
         max_tries: 50
         keep_ratio: true
     - MakeBorderMap:
@@ -130,15 +135,16 @@ Train:
   loader:
     shuffle: true
     drop_last: false
-    batch_size_per_card: 8
-    num_workers: 8
+    batch_size_per_card: 32
+    num_workers: 4
+    use_shared_memory: False
 
 Eval:
   dataset:
     name: SimpleDataSet
-    data_dir: ./train_data/icdar2015/text_localization/
+    data_dir: /mnt/ssd/martin/project/ocr_game/data/det/v4_add_claim_data/
     label_file_list:
-      - ./train_data/icdar2015/text_localization/test_icdar2015_label.txt
+      - /mnt/ssd/martin/project/ocr_game/data/det/v4_add_claim_data/val_aug.txt
     transforms:
     - DecodeImage:
         img_mode: BGR
