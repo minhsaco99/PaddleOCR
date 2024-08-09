@@ -18,9 +18,12 @@ import paddle.nn.functional as F
 
 
 class CPPDLoss(nn.Layer):
-    def __init__(
-        self, smoothing=False, ignore_index=100, sideloss_weight=1.0, **kwargs
-    ):
+    def __init__(self,
+                 smoothing=False,
+                 ignore_index=100,
+                 sideloss_weight=1.0,
+                 max_text_length=150,
+                 **kwargs):
         super(CPPDLoss, self).__init__()
         self.edge_ce = nn.CrossEntropyLoss(reduction="mean", ignore_index=ignore_index)
         self.char_node_ce = nn.CrossEntropyLoss(reduction="mean")
@@ -28,6 +31,7 @@ class CPPDLoss(nn.Layer):
         self.smoothing = smoothing
         self.ignore_index = ignore_index
         self.sideloss_weight = sideloss_weight
+        self.max_text_length = max_text_length
 
     def label_smoothing_ce(self, preds, targets):
         non_pad_mask = paddle.not_equal(
@@ -54,12 +58,10 @@ class CPPDLoss(nn.Layer):
         node_tgt = batch[2]
         char_tgt = batch[1]
 
-        loss_char_node = self.char_node_ce(
-            node_feats[0].flatten(0, 1), node_tgt[:, :-26].flatten(0, 1)
-        )
-        loss_pos_node = self.pos_node_ce(
-            node_feats[1].flatten(0, 1), node_tgt[:, -26:].flatten(0, 1).cast("float32")
-        )
+        loss_char_node = self.char_node_ce(node_feats[0].flatten(0, 1),
+                                        node_tgt[:, :-(self.max_text_length+1)].flatten(0, 1))
+        loss_pos_node = self.pos_node_ce(node_feats[1].flatten(
+            0, 1), node_tgt[:, -(self.max_text_length+1):].flatten(0, 1).cast('float32'))
         loss_node = loss_char_node + loss_pos_node
 
         edge_feats = edge_feats.flatten(0, 1)
